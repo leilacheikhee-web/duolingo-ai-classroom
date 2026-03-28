@@ -14,7 +14,7 @@ export async function generateAIResponse(
   systemPrompt: string = "You are a helpful language learning tutor."
 ): Promise<string> {
   const response = await client.messages.create({
-    model: "claude-opus-4-5",
+    model: "claude-3-5-sonnet-20241022",
     max_tokens: 1024,
     system: systemPrompt,
     messages,
@@ -29,7 +29,7 @@ export async function streamAIResponse(
   systemPrompt: string = "You are a helpful language learning tutor."
 ) {
   return client.messages.stream({
-    model: "claude-opus-4-5",
+    model: "claude-3-5-sonnet-20241022",
     max_tokens: 1024,
     system: systemPrompt,
     messages,
