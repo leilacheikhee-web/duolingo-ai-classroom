@@ -22,14 +22,16 @@ export async function POST(request: NextRequest) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          system_instruction: { parts: [{ text: systemPrompt }] },
-          contents: geminiMessages,
+          contents: [
+            { role: "user", parts: [{ text: systemPrompt + "\n\nUser: " + messages[messages.length-1].content }] }
+          ],
         }),
       }
     );
 
     const data = await response.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "I'm here to help! Please try again.";
+    console.log("Gemini response:", JSON.stringify(data));
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I could not generate a response.";
 
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
