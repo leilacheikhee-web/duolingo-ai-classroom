@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const SYSTEM_PROMPTS: Record<string, string> = {
-  tutor: "You are an expert language learning tutor. Help students learn new languages in an engaging, supportive way. Correct grammar mistakes with clear explanations. Provide translations with cultural context. Always be patient and educational.",
-  grammar: "You are a grammar correction specialist. Identify grammatical errors, provide the corrected version, explain each correction clearly, and give examples of proper usage.",
-  translation: "You are a professional translator. Provide accurate translations with cultural context and explain idiomatic expressions.",
+  tutor: "You are an expert language learning tutor. Help students learn languages in an engaging way.",
+  grammar: "You are a grammar correction specialist. Identify errors, provide corrections and explanations.",
+  translation: "You are a professional translator. Provide accurate translations with cultural context.",
 };
 
 export async function POST(request: NextRequest) {
@@ -11,49 +11,35 @@ export async function POST(request: NextRequest) {
     const { messages, mode = "tutor" } = await request.json();
     const systemPrompt = SYSTEM_PROMPTS[mode] || SYSTEM_PROMPTS.tutor;
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY || "",
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-3-5-sonnet-20241022",
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages,
-        stream: true,
-      }),
-    });
+    const geminiMessages = messages.map((m: {role: string, content: string}) => ({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content }],
+    }));
 
-    if (!response.ok) {
-      const error = await response.text();
-      console.error("Anthropic API error:", error);
-      return NextResponse.json({ error }, { status: response.status });
-    }
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?key=${process.env.GOOGLE_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: systemPrompt }] },
+          contents: geminiMessages,
+        }),
+      }
+    );
 
+    const data = await response.json();
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
-      async start(controller) {
-        const reader = response.body!.getReader();
-        const decoder = new TextDecoder();
+      start(controller) {
         try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            const chunk = decoder.decode(value);
-            const lines = chunk.split("\n");
-            for (const line of lines) {
-              if (line.startsWith("data: ")) {
-                const data = line.slice(6).trim();
-                if (data === "[DONE]") continue;
-                try {
-                  const parsed = JSON.parse(data);
-                  if (parsed.type === "content_block_delta" && parsed.delta?.text) {
-                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: parsed.delta.text })}\n\n`));
-                  }
-                } catch {}
+          const items = Array.isArray(data) ? data : [data];
+          for (const item of items) {
+            const text = item?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+            if (text) {
+              const words = text.split(" ");
+              for (const word of words) {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: word + " " })}\n\n`));
               }
             }
           }
@@ -65,14 +51,9 @@ export async function POST(request: NextRequest) {
     });
 
     return new NextResponse(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-      },
+      headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" },
     });
   } catch (error) {
-    console.error("Chat error:", error);
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }
