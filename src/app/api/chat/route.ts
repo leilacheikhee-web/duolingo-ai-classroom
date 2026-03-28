@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const SYSTEM_PROMPTS: Record<string, string> = {
-  tutor: "You are an expert language learning tutor. Help students learn languages in an engaging way.",
+  tutor: "You are an expert language learning tutor. Help students learn languages in an engaging way. Always respond with helpful, encouraging content.",
   grammar: "You are a grammar correction specialist. Identify errors, provide corrections and explanations.",
   translation: "You are a professional translator. Provide accurate translations with cultural context.",
 };
@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     }));
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?key=${process.env.GOOGLE_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GOOGLE_API_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -29,24 +29,23 @@ export async function POST(request: NextRequest) {
     );
 
     const data = await response.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "I'm here to help! Please try again.";
+
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       start(controller) {
-        try {
-          const items = Array.isArray(data) ? data : [data];
-          for (const item of items) {
-            const text = item?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-            if (text) {
-              const words = text.split(" ");
-              for (const word of words) {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: word + " " })}\n\n`));
-              }
-            }
+        const words = text.split(" ");
+        let i = 0;
+        const interval = setInterval(() => {
+          if (i < words.length) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: words[i] + " " })}\n\n`));
+            i++;
+          } else {
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.close();
+            clearInterval(interval);
           }
-        } finally {
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-          controller.close();
-        }
+        }, 30);
       },
     });
 
@@ -54,6 +53,7 @@ export async function POST(request: NextRequest) {
       headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache" },
     });
   } catch (error) {
+    console.error("Chat error:", error);
     return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }
