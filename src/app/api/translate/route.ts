@@ -1,17 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateAIResponse, TRANSLATION_SYSTEM_PROMPT } from "@/lib/llm-service";
 
 export async function POST(request: NextRequest) {
   try {
     const { text, targetLanguage } = await request.json();
-    if (!text || !targetLanguage) return NextResponse.json({ error: "Text and target language are required" }, { status: 400 });
-    const response = await generateAIResponse(
-      [{ role: "user", content: `Translate the following to ${targetLanguage}: "${text}"` }],
-      TRANSLATION_SYSTEM_PROMPT
-    );
-    return NextResponse.json({ translation: response });
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": process.env.ANTHROPIC_API_KEY || "",
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-3-5-sonnet-20241022",
+        max_tokens: 1024,
+        system: "You are a professional translator with cultural knowledge.",
+        messages: [{ role: "user", content: `Translate to ${targetLanguage}: "${text}"` }],
+      }),
+    });
+    const data = await response.json();
+    const translation = data.content?.[0]?.text || "Error getting translation";
+    return NextResponse.json({ translation });
   } catch (error) {
-    console.error("Translation API error:", error);
-    return NextResponse.json({ error: "Failed to translate" }, { status: 500 });
+    return NextResponse.json({ error: String(error) }, { status: 500 });
   }
 }
