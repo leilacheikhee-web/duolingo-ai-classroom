@@ -51,3 +51,4 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 <span><img alt='Qwasar SV -- Software Engineering School's Logo' src='https://storage.googleapis.com/qwasar-public/qwasar-logo_50x50.png' width='20px' /></span>
 
  
+.
